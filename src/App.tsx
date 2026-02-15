@@ -8,11 +8,15 @@ import Dashboard from "@/pages/Dashboard";
 import Bancas from "@/pages/Bancas";
 import NovaAposta from "@/pages/NovaAposta";
 import Historico from "@/pages/Historico";
+import CasasApostas from "@/pages/config/CasasApostas";
+import Tipsters from "@/pages/config/Tipsters";
+import Categorias from "@/pages/config/Categorias";
+import Competicoes from "@/pages/config/Competicoes";
+import TiposApostas from "@/pages/config/TiposApostas";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Force dark mode
 if (!document.documentElement.classList.contains('dark')) {
   document.documentElement.classList.add('dark');
 }
@@ -29,6 +33,11 @@ const App = () => (
             <Route path="/bancas" element={<Bancas />} />
             <Route path="/apostas/nova" element={<NovaAposta />} />
             <Route path="/historico" element={<Historico />} />
+            <Route path="/config/casas-apostas" element={<CasasApostas />} />
+            <Route path="/config/tipsters" element={<Tipsters />} />
+            <Route path="/config/categorias" element={<Categorias />} />
+            <Route path="/config/competicoes" element={<Competicoes />} />
+            <Route path="/config/tipos-apostas" element={<TiposApostas />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
