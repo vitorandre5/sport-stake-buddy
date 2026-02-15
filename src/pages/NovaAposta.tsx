@@ -1,74 +1,106 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { addAposta, getBancas, generateId } from "@/lib/storage";
-import { Aposta, ResultadoAposta, TipoAposta } from "@/types/betting";
-import { Target } from "lucide-react";
+import { Aposta } from "@/types/betting";
+import { X, Plus, Target } from "lucide-react";
+import SelecaoCard, { SelecaoData, emptySelecao } from "@/components/aposta/SelecaoCard";
+import FormatoAposta from "@/components/aposta/FormatoAposta";
+import ValorAposta from "@/components/aposta/ValorAposta";
+import MaisOpcoes, { emptyMaisOpcoes } from "@/components/aposta/MaisOpcoes";
 
-const ESPORTES = ["Futebol", "Basquete", "Tênis", "MMA/UFC", "Vôlei", "CS2", "LoL", "Outro"];
+const CASAS = ["Bet365", "Betano", "Sportingbet", "1xBet", "Pixbet", "KTO", "Betfair", "Pinnacle", "Outro"];
 
 export default function NovaAposta() {
   const navigate = useNavigate();
   const bancas = useMemo(() => getBancas(), []);
 
-  const [form, setForm] = useState({
-    bancaId: bancas[0]?.id || "",
-    tipo: "simples" as TipoAposta,
-    esporte: "",
-    competicao: "",
-    evento: "",
-    mercado: "",
-    odd: "",
-    stake: "",
-    resultado: "pendente" as ResultadoAposta,
-    casaDeApostas: "",
-    tipster: "",
-    categoria: "",
-    aoVivo: false,
-    freebet: false,
-    notas: "",
-    data: new Date().toISOString().split("T")[0],
-  });
+  // General info
+  const [bancaId, setBancaId] = useState(bancas[0]?.id || "");
+  const [data, setData] = useState(new Date().toISOString().split("T")[0]);
+  const [hora, setHora] = useState(new Date().toTimeString().slice(0, 5));
+  const [casaDeApostas, setCasaDeApostas] = useState("");
 
-  const set = (key: string, value: any) => setForm(f => ({ ...f, [key]: value }));
+  // Selections
+  const [selecoes, setSelecoes] = useState<SelecaoData[]>([emptySelecao()]);
 
-  const calcLucro = (): number => {
-    const odd = parseFloat(form.odd) || 0;
-    const stake = parseFloat(form.stake) || 0;
-    if (form.resultado === 'ganhou') return stake * (odd - 1);
-    if (form.resultado === 'perdeu') return -stake;
-    if (form.resultado === 'cashout') return 0; // user should edit manually
+  // Format
+  const [formato, setFormato] = useState<"simples" | "back" | "lay">("back");
+  const [multipla, setMultipla] = useState(false);
+
+  // Value
+  const [valor, setValor] = useState("");
+  const [percentual, setPercentual] = useState("");
+
+  // More options
+  const [maisOpcoes, setMaisOpcoes] = useState(emptyMaisOpcoes());
+
+  const updateSelecao = (i: number, s: SelecaoData) => {
+    const copy = [...selecoes];
+    copy[i] = s;
+    setSelecoes(copy);
+  };
+
+  const removeSelecao = (i: number) => setSelecoes(selecoes.filter((_, idx) => idx !== i));
+  const addSelecao = () => setSelecoes([...selecoes, emptySelecao()]);
+
+  const mapEstado = (estado: string) => {
+    const map: Record<string, string> = { Pendente: "pendente", Ganhou: "ganhou", Perdeu: "perdeu", Cashout: "cashout", Reembolso: "reembolso" };
+    return (map[estado] || "pendente") as Aposta["resultado"];
+  };
+
+  const calcLucro = (resultado: Aposta["resultado"], odd: number, stake: number): number => {
+    if (resultado === "ganhou") return stake * (odd - 1);
+    if (resultado === "perdeu") return -stake;
     return 0;
   };
 
   const handleSubmit = () => {
-    if (!form.bancaId || !form.esporte || !form.odd || !form.stake) return;
+    const sel = selecoes[0];
+    if (!bancaId || !sel?.esporte || !sel?.cotacao || !valor) return;
+
+    const odd = selecoes.length > 1
+      ? selecoes.reduce((acc, s) => acc * (parseFloat(s.cotacao) || 1), 1)
+      : parseFloat(sel.cotacao) || 0;
+
+    const stake = parseFloat(valor) || 0;
+    const resultado = mapEstado(sel.estado);
+
     const aposta: Aposta = {
       id: generateId(),
-      bancaId: form.bancaId,
-      tipo: form.tipo,
-      esporte: form.esporte,
-      competicao: form.competicao,
-      evento: form.evento,
-      mercado: form.mercado,
-      odd: parseFloat(form.odd),
-      stake: parseFloat(form.stake),
-      resultado: form.resultado,
-      lucro: calcLucro(),
-      data: form.data,
-      casaDeApostas: form.casaDeApostas || undefined,
-      tipster: form.tipster || undefined,
-      categoria: form.categoria || undefined,
-      aoVivo: form.aoVivo,
-      freebet: form.freebet,
-      notas: form.notas || undefined,
+      bancaId,
+      tipo: selecoes.length > 1 ? "combinada" : "simples",
+      esporte: sel.esporte,
+      competicao: sel.competicao,
+      evento: sel.titulo,
+      mercado: sel.tipoAposta,
+      odd,
+      stake,
+      resultado,
+      lucro: calcLucro(resultado, odd, stake),
+      data: `${data}T${hora}`,
+      casaDeApostas: casaDeApostas || undefined,
+      tipster: maisOpcoes.tipster || undefined,
+      categoria: sel.categoria || undefined,
+      aoVivo: maisOpcoes.aoVivo,
+      freebet: maisOpcoes.apostaGratuita,
+      notas: maisOpcoes.comentario || undefined,
+      selecoes: selecoes.length > 1
+        ? selecoes.map(s => ({
+            esporte: s.esporte,
+            competicao: s.competicao,
+            evento: s.titulo,
+            mercado: s.tipoAposta,
+            odd: parseFloat(s.cotacao) || 0,
+            resultado: mapEstado(s.estado),
+          }))
+        : undefined,
     };
+
     addAposta(aposta);
     navigate("/historico");
   };
@@ -89,129 +121,87 @@ export default function NovaAposta() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Nova Aposta</h1>
-        <p className="text-sm text-muted-foreground">Registre uma nova aposta</p>
+    <div className="space-y-4 max-w-2xl pb-28">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-foreground">Adicionar aposta</h1>
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="text-muted-foreground hover:text-foreground">
+          <X className="h-5 w-5" />
+        </Button>
       </div>
 
+      {/* General info */}
       <Card className="bg-card border-border">
-        <CardContent className="p-6 space-y-4">
-          {/* Row 1 */}
-          <div className="grid grid-cols-2 gap-4">
+        <CardContent className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Banca</Label>
-              <Select value={form.bancaId} onValueChange={v => set("bancaId", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {bancas.map(b => <SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>)}
-                </SelectContent>
+              <Label className="text-xs text-muted-foreground">Data</Label>
+              <Input type="date" value={data} onChange={e => setData(e.target.value)} className="mt-1 bg-background" />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Hora</Label>
+              <Input type="time" value={hora} onChange={e => setHora(e.target.value)} className="mt-1 bg-background" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Banca</Label>
+              <Select value={bancaId} onValueChange={setBancaId}>
+                <SelectTrigger className="mt-1 bg-background"><SelectValue /></SelectTrigger>
+                <SelectContent>{bancas.map(b => <SelectItem key={b.id} value={b.id}>{b.nome}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
-              <Label>Data</Label>
-              <Input type="date" value={form.data} onChange={e => set("data", e.target.value)} className="mt-1" />
-            </div>
-          </div>
-
-          {/* Row 2 */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Esporte</Label>
-              <Select value={form.esporte} onValueChange={v => set("esporte", v)}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  {ESPORTES.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Competição</Label>
-              <Input value={form.competicao} onChange={e => set("competicao", e.target.value)} placeholder="Ex: Brasileirão" className="mt-1" />
-            </div>
-          </div>
-
-          {/* Row 3 */}
-          <div>
-            <Label>Evento</Label>
-            <Input value={form.evento} onChange={e => set("evento", e.target.value)} placeholder="Ex: Flamengo x Palmeiras" className="mt-1" />
-          </div>
-
-          <div>
-            <Label>Mercado / Tipo de Aposta</Label>
-            <Input value={form.mercado} onChange={e => set("mercado", e.target.value)} placeholder="Ex: Resultado Final, Over 2.5" className="mt-1" />
-          </div>
-
-          {/* Row 4 */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label>Odd</Label>
-              <Input type="number" step="0.01" value={form.odd} onChange={e => set("odd", e.target.value)} placeholder="1.50" className="mt-1" />
-            </div>
-            <div>
-              <Label>Stake (R$)</Label>
-              <Input type="number" step="0.01" value={form.stake} onChange={e => set("stake", e.target.value)} placeholder="10.00" className="mt-1" />
-            </div>
-            <div>
-              <Label>Resultado</Label>
-              <Select value={form.resultado} onValueChange={v => set("resultado", v)}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pendente">⏳ Pendente</SelectItem>
-                  <SelectItem value="ganhou">✅ Ganhou</SelectItem>
-                  <SelectItem value="perdeu">❌ Perdeu</SelectItem>
-                  <SelectItem value="cashout">💰 Cashout</SelectItem>
-                  <SelectItem value="reembolso">🔄 Reembolso</SelectItem>
-                </SelectContent>
+              <Label className="text-xs text-muted-foreground">Casa de apostas</Label>
+              <Select value={casaDeApostas} onValueChange={setCasaDeApostas}>
+                <SelectTrigger className="mt-1 bg-background"><SelectValue placeholder="Selecionar" /></SelectTrigger>
+                <SelectContent>{CASAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>
-
-          {/* Optional fields */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Casa de Apostas</Label>
-              <Input value={form.casaDeApostas} onChange={e => set("casaDeApostas", e.target.value)} placeholder="Ex: Bet365" className="mt-1" />
-            </div>
-            <div>
-              <Label>Tipster</Label>
-              <Input value={form.tipster} onChange={e => set("tipster", e.target.value)} placeholder="Ex: João Tips" className="mt-1" />
-            </div>
-          </div>
-
-          {/* Switches */}
-          <div className="flex gap-6">
-            <div className="flex items-center gap-2">
-              <Switch checked={form.aoVivo} onCheckedChange={v => set("aoVivo", v)} />
-              <Label className="text-sm">Ao Vivo</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch checked={form.freebet} onCheckedChange={v => set("freebet", v)} />
-              <Label className="text-sm">Freebet</Label>
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <Label>Notas</Label>
-            <Textarea value={form.notas} onChange={e => set("notas", e.target.value)} placeholder="Observações..." className="mt-1" rows={2} />
-          </div>
-
-          {/* Lucro preview */}
-          {form.resultado !== 'pendente' && form.odd && form.stake && (
-            <div className="p-3 rounded-lg bg-secondary">
-              <p className="text-xs text-muted-foreground">Lucro/Prejuízo estimado:</p>
-              <p className={`text-lg font-bold font-mono ${calcLucro() >= 0 ? 'text-success' : 'text-destructive'}`}>
-                {calcLucro() >= 0 ? '+' : ''}R$ {calcLucro().toFixed(2)}
-              </p>
-            </div>
-          )}
-
-          <Button onClick={handleSubmit} className="w-full" size="lg">
-            Registrar Aposta
-          </Button>
         </CardContent>
       </Card>
+
+      {/* Selections */}
+      {selecoes.map((sel, i) => (
+        <SelecaoCard
+          key={i}
+          index={i}
+          data={sel}
+          onChange={s => updateSelecao(i, s)}
+          onRemove={() => removeSelecao(i)}
+          canRemove={selecoes.length > 1}
+        />
+      ))}
+
+      <Button variant="outline" onClick={addSelecao} className="w-full border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary">
+        <Plus className="h-4 w-4 mr-2" />
+        Adicionar uma seleção
+      </Button>
+
+      {/* Bet format */}
+      <FormatoAposta formato={formato} onFormatoChange={setFormato} multipla={multipla} onMultiplaChange={setMultipla} />
+
+      {/* Value */}
+      <ValorAposta formato={formato} valor={valor} onValorChange={setValor} percentual={percentual} onPercentualChange={setPercentual} />
+
+      {/* More options */}
+      <MaisOpcoes data={maisOpcoes} onChange={setMaisOpcoes} />
+
+      {/* Fixed footer */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t border-border z-50">
+        <div className="max-w-2xl mx-auto">
+          <Button
+            onClick={handleSubmit}
+            className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 neon-glow"
+            size="lg"
+          >
+            Adicionar aposta
+          </Button>
+          <p className="text-xs text-center text-muted-foreground mt-2">Limite de apostas — 2%</p>
+        </div>
+      </div>
     </div>
   );
 }
